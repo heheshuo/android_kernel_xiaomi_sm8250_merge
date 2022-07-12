@@ -317,6 +317,9 @@ struct sde_crtc {
 	struct sde_crtc_frame_event frame_events[SDE_CRTC_FRAME_EVENT_SIZE];
 	struct list_head frame_event_list;
 	spinlock_t spin_lock;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	spinlock_t fevent_spin_lock;
+#endif
 
 	/* for handling internal event thread */
 	struct sde_crtc_event event_cache[SDE_CRTC_MAX_EVENT_COUNT];
@@ -348,6 +351,9 @@ struct sde_crtc {
 	struct mutex ltm_buffer_lock;
 	spinlock_t ltm_lock;
 	bool needs_hw_reset;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	int hist_irq_idx;
+#endif
 
 	int comp_ratio;
 };

@@ -632,6 +632,8 @@ struct dsi_host_common_cfg {
 	u32 clk_strength;
 #ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	bool cphy_strength;
+	u32 dma_sched_line;
+	u32 dma_sched_window;
 #endif
 };
 
@@ -662,7 +664,9 @@ struct dsi_video_engine_cfg {
 	bool bllp_lp11_en;
 	enum dsi_video_traffic_mode traffic_mode;
 	u32 vc_id;
+#ifndef CONFIG_MACH_XIAOMI_PSYCHE
 	u32 dma_sched_line;
+#endif
 };
 
 /**

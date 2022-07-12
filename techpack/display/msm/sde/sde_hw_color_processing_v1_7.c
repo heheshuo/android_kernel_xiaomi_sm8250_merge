@@ -949,6 +949,22 @@ void sde_read_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *cfg)
 	SDE_REG_WRITE(&ctx->hw, offset_ctl, 0);
 }
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+void sde_lock_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *cfg)
+{
+	u32 offset_ctl, val;
+
+	if (!ctx || !cfg) {
+		DRM_ERROR("invalid parameters ctx %pK cfg %pK", ctx, cfg);
+		return;
+	}
+
+	offset_ctl = ctx->cap->sblk->hist.base + PA_HIST_CTRL_DSPP_OFF;
+
+	val = (*(u32 *)cfg) & 0x1;
+	SDE_REG_WRITE(&ctx->hw, offset_ctl, val);
+}
+#else
 void sde_lock_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *cfg)
 {
 	u32 offset_ctl;
@@ -963,6 +979,7 @@ void sde_lock_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *cfg)
 	/* lock hist buffer */
 	SDE_REG_WRITE(&ctx->hw, offset_ctl, 1);
 }
+#endif
 
 void sde_setup_dspp_dither_v1_7(struct sde_hw_dspp *ctx, void *cfg)
 {

@@ -1402,7 +1402,11 @@ static int dsi_panel_parse_misc_host_config(struct dsi_host_common_cfg *host,
 					    struct dsi_parser_utils *utils,
 					    const char *name)
 {
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	u32 val = 0, line_no = 0, window = 0;
+#else
 	u32 val = 0;
+#endif
 	int rc = 0;
 	bool panel_cphy_mode = false;
 
@@ -1451,6 +1455,23 @@ static int dsi_panel_parse_misc_host_config(struct dsi_host_common_cfg *host,
 #ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	host->cphy_strength = utils->read_bool(utils->data,
 					"qcom,mdss-dsi-cphy-strength");
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-dma-schedule-line",
+				  &line_no);
+	if (rc)
+		host->dma_sched_line = 0;
+	else
+		host->dma_sched_line = line_no;
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-dma-schedule-window",
+				  &window);
+	if (rc)
+		host->dma_sched_window = 0;
+	else
+		host->dma_sched_window = window;
+
+	DSI_DEBUG("[%s] DMA scheduling parameters Line: %d Window: %d\n", name,
+			host->dma_sched_line, host->dma_sched_window);
 #endif
 
 	return 0;
@@ -1713,7 +1734,9 @@ static int dsi_panel_parse_video_host_config(struct dsi_video_engine_cfg *cfg,
 	const char *traffic_mode;
 	u32 vc_id = 0;
 	u32 val = 0;
+#ifndef CONFIG_MACH_XIAOMI_PSYCHE
 	u32 line_no = 0;
+#endif
 
 	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-h-sync-pulse", &val);
 	if (rc) {
@@ -1776,6 +1799,7 @@ static int dsi_panel_parse_video_host_config(struct dsi_video_engine_cfg *cfg,
 		cfg->vc_id = vc_id;
 	}
 
+#ifndef CONFIG_MACH_XIAOMI_PSYCHE
 	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-dma-schedule-line",
 				  &line_no);
 	if (rc) {
@@ -1786,6 +1810,7 @@ static int dsi_panel_parse_video_host_config(struct dsi_video_engine_cfg *cfg,
 	} else {
 		cfg->dma_sched_line = line_no;
 	}
+#endif
 
 error:
 	return rc;
