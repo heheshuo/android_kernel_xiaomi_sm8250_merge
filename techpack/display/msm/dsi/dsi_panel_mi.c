@@ -28,6 +28,7 @@
 #include "dsi_mi_feature.h"
 #include "../../../../kernel/irq/internals.h"
 #include "xiaomi_frame_stat.h"
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 #include "mi_disp_nvt_alpha_data.h"
 #include "mi_disp_lhbm.h"
 
@@ -37,11 +38,14 @@
 
 static struct proc_dir_entry *mipi_proc_entry = NULL;
 #define MIPI_PROC_NAME "mipi_reg"
-#endif
+#endif /* DSI_READ_WRITE_PANEL_DEBUG */
+#endif /* CONFIG_MACH_XIAOMI_PSYCHE */
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 extern ssize_t mipi_dsi_dcs_write(struct mipi_dsi_device *dsi, u8 cmd, const void *data, size_t len);
+#endif
 
 extern struct frame_stat fm_stat;
 static struct dsi_read_config g_dsi_read_cfg;
@@ -65,6 +69,7 @@ static void panelon_dimming_enable_delayed_work(struct work_struct *work)
 	}
 }
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 static void panelon_cabc_delayed_work(struct work_struct *work)
 {
 	struct dsi_panel_mi_cfg *mi_cfg = container_of(work,
@@ -117,6 +122,7 @@ static void panelon_cabc_delayed_work(struct work_struct *work)
 exit:
 	mutex_unlock(&dsi_panel->panel_lock);
 }
+#endif
 
 static void enter_aod_delayed_work(struct work_struct *work)
 {
@@ -132,6 +138,7 @@ static void enter_aod_delayed_work(struct work_struct *work)
 	if (!panel->panel_initialized)
 		goto exit;
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	if (mi_cfg->local_hbm_enabled) {
 		if (panel->power_mode == SDE_MODE_DPMS_LP1 ||
 				panel->power_mode == SDE_MODE_DPMS_LP2) {
@@ -162,6 +169,25 @@ static void enter_aod_delayed_work(struct work_struct *work)
 			}
 		}
 	}
+#else
+	if (panel->power_mode == SDE_MODE_DPMS_LP1 ||
+			panel->power_mode == SDE_MODE_DPMS_LP2) {
+		if (mi_cfg->layer_fod_unlock_success || mi_cfg->sysfs_fod_unlock_success) {
+			pr_info("[%d,%d]Fod fingerprint unlocked successfully, skip to enter aod mode\n",
+				mi_cfg->layer_fod_unlock_success, mi_cfg->sysfs_fod_unlock_success);
+			goto exit;
+		} else {
+			if (!mi_cfg->unset_doze_brightness) {
+				mi_cfg->unset_doze_brightness = mi_cfg->doze_brightness_state;
+			}
+			pr_info("delayed_work runing --- set doze brightness\n");
+			if (mi_cfg->layer_aod_flag)
+				dsi_panel_set_doze_brightness(panel, mi_cfg->unset_doze_brightness, false);
+			else
+				pr_info("delayed_work runing --- skip into doze\n");
+		}
+	}
+#endif
 
 exit:
 	mutex_unlock(&panel->panel_lock);
@@ -316,6 +342,10 @@ static int dsi_panel_parse_smart_fps_config(struct dsi_panel *panel,
 	struct dsi_parser_utils *utils = &panel->utils;
 	struct dsi_panel_mi_cfg *mi_cfg = &panel->mi_cfg;
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	mi_cfg->idle_mode_flag = true;
+#endif
+
 	mi_cfg->smart_fps_support = utils->read_bool(of_node,
 			"mi,mdss-dsi-pan-enable-smart-fps");
 
@@ -334,6 +364,16 @@ static int dsi_panel_parse_smart_fps_config(struct dsi_panel *panel,
 				pr_info("smart fps max framerate is %d\n", mi_cfg->smart_fps_max_framerate);
 		}
 	}
+
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	rc = utils->read_u32(of_node,
+			"mi,mdss-panel-idle-fps", &mi_cfg->idle_fps);
+	if (rc) {
+		mi_cfg->idle_fps = 0;
+		pr_info("mi,mdss-panel-idle-fps not defined\n");
+	} else
+		pr_info("idle fps is %d\n", mi_cfg->idle_fps);
+#endif
 
 	return rc;
 }
@@ -362,6 +402,32 @@ static int dsi_panel_parse_elvss_dimming_config(struct dsi_panel *panel,
 
 	return rc;
 }
+
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+int dsi_panel_parse_esd_gpio_config(struct dsi_panel *panel)
+{
+	int rc = 0;
+	struct dsi_parser_utils *utils = &panel->utils;
+	struct dsi_panel_mi_cfg *mi_cfg = &panel->mi_cfg;
+
+	mi_cfg->esd_err_irq_gpio = of_get_named_gpio_flags(
+			utils->data, "mi,esd-err-irq-gpio",
+			0, (enum of_gpio_flags *)&(mi_cfg->esd_err_irq_flags));
+	if (gpio_is_valid(mi_cfg->esd_err_irq_gpio)) {
+		mi_cfg->esd_err_irq = gpio_to_irq(mi_cfg->esd_err_irq_gpio);
+		rc = gpio_request(mi_cfg->esd_err_irq_gpio, "esd_err_irq_gpio");
+		if (rc)
+			pr_err("Failed to request esd irq gpio %d, rc=%d\n",
+				mi_cfg->esd_err_irq_gpio, rc);
+		else
+			gpio_direction_input(mi_cfg->esd_err_irq_gpio);
+	} else {
+		rc = -EINVAL;
+	}
+
+	return rc;
+}
+#endif
 
 int dsi_panel_parse_mi_config(struct dsi_panel *panel,
 				struct device_node *of_node)
@@ -514,7 +580,7 @@ int dsi_panel_parse_mi_config(struct dsi_panel *panel,
 	}
 
 skip_dimlayer_parse:
-
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	mi_cfg->local_hbm_enabled = utils->read_bool(utils->data, "mi,local-hbm-enabled");
 	if (mi_cfg->local_hbm_enabled) {
 		pr_info("local_hbm_enabled\n");
@@ -588,7 +654,7 @@ skip_dimlayer_parse:
 			pr_err("mi,mdss-dsi-panel-nolp-b2reg-index not defined,but need\n");
 		}
 	}
-
+#endif
 	mi_cfg->disp_rate_gpio = utils->get_named_gpio(utils->data,
 		"mi,mdss-dsi-panel-disp-rate-gpio",0);
 	if (gpio_is_valid(mi_cfg->disp_rate_gpio)) {
@@ -616,8 +682,10 @@ skip_dimlayer_parse:
 	if (mi_cfg->panel_on_dimming_delay)
 		INIT_DELAYED_WORK(&mi_cfg->dimming_enable_delayed_work, panelon_dimming_enable_delayed_work);
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	if (panel->host_config.cphy_strength)
 		INIT_DELAYED_WORK(&mi_cfg->cabc_delayed_work, panelon_cabc_delayed_work);
+#endif
 
 	rc = utils->read_u32(of_node,
 			"mi,disp-fod-off-dimming-delay", &mi_cfg->fod_off_dimming_delay);
@@ -666,6 +734,7 @@ skip_dimlayer_parse:
 		pr_info("mi,mdss-dsi-panel-dc-update-flag feature not defined\n");
 	}
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	mi_cfg->dc_update_flag_v2 = utils->read_bool(utils->data,
 			"mi,mdss-dsi-panel-dc-update-flag-v2");
 	if (mi_cfg->dc_update_flag_v2) {
@@ -717,6 +786,7 @@ skip_dimlayer_parse:
 	} else {
 		pr_info("mi,mdss-dsi-panel-gir-update-flag not defined\n");
 	}
+#endif
 
 	mi_cfg->wp_read_enabled= utils->read_bool(utils->data,
 				"mi,mdss-dsi-white-point-read-enabled");
@@ -810,10 +880,12 @@ skip_dimlayer_parse:
 	mi_cfg->tddi_doubleclick_flag = false;
 
 	mi_cfg->dither_enabled = false;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	mi_cfg->local_hbm_cur_status = false;
 	mi_cfg->fod_lhbm_low_brightness_enabled = false;
 	mi_cfg->fp_status = 0;
 	mi_cfg->dim_fp_dbv_max_in_hbm_flag = false;
+#endif
 
 	return rc;
 }
@@ -840,6 +912,49 @@ void display_utc_time_marker(const char *format, ...)
 
 	va_end(args);
 }
+
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+int dsi_panel_esd_irq_ctrl(struct dsi_panel *panel,
+				bool enable)
+{
+	struct dsi_panel_mi_cfg *mi_cfg;
+	struct irq_desc *desc;
+
+	if (!panel || !panel->panel_initialized) {
+		pr_err("Panel not ready!\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&panel->panel_lock);
+
+	mi_cfg = &panel->mi_cfg;
+	if (gpio_is_valid(mi_cfg->esd_err_irq_gpio)) {
+		if (mi_cfg->esd_err_irq) {
+			if (enable) {
+				if (!mi_cfg->esd_err_enabled) {
+					desc = irq_to_desc(mi_cfg->esd_err_irq);
+					if (!irq_settings_is_level(desc))
+						desc->istate &= ~IRQS_PENDING;
+					enable_irq(mi_cfg->esd_err_irq);
+					mi_cfg->esd_err_enabled = true;
+					pr_info("panel esd irq is enable\n");
+				}
+			} else {
+				if (mi_cfg->esd_err_enabled) {
+					disable_irq_nosync(mi_cfg->esd_err_irq);
+					mi_cfg->esd_err_enabled = false;
+					pr_info("panel esd irq is disable\n");
+				}
+			}
+		}
+	} else {
+		pr_info("panel esd irq gpio invalid\n");
+	}
+
+	mutex_unlock(&panel->panel_lock);
+	return 0;
+}
+#endif
 
 int dsi_panel_update_elvss_dimming(struct dsi_panel *panel)
 {
@@ -1241,6 +1356,45 @@ error:
 	mutex_unlock(&panel->panel_lock);
 	return retval;
 }
+
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+int dsi_panel_match_fps_pen_setting(struct dsi_panel *panel,
+				struct dsi_display_mode *adj_mode)
+{
+	int rc =0;
+	int retval = 0;
+	struct dsi_display_mode_priv_info *priv_info;
+
+	if (!panel || !panel->cur_mode || !panel->cur_mode->priv_info || !adj_mode) {
+		pr_err("invalid params\n");
+		return -EAGAIN;
+	}
+
+	priv_info = panel->cur_mode->priv_info;
+
+	if (!priv_info->cmd_sets[DSI_CMD_SET_DISP_PEN_120HZ].count) {
+		pr_debug("DSI_CMD_SET_DISP_PEN_120HZ not defined, return\n");
+		return 0;
+	}
+
+	if (adj_mode->timing.refresh_rate == 120)
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DISP_PEN_120HZ);
+	else if (adj_mode->timing.refresh_rate == 60)
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DISP_PEN_60HZ);
+	else if (adj_mode->timing.refresh_rate == 30)
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DISP_PEN_30HZ);
+
+	if (rc) {
+		pr_err("Failed to send DSI_CMD_SET_DISP_PEN_120HZ command\n");
+		retval = -EAGAIN;
+		goto error;
+	}else
+		pr_info("%s: refresh_rate[%d]\n", __func__, adj_mode->timing.refresh_rate);
+
+error:
+	return retval;
+}
+#endif
 
 static int dsi_panel_read_gamma_opt_and_flash(struct dsi_panel *panel,
 				struct dsi_display_ctrl *ctrl)
@@ -1783,6 +1937,7 @@ int dsi_panel_update_gamma_param(struct dsi_panel *panel)
 	return 0;
 }
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 int mi_dsi_panel_read_lhbm_white_reg(struct dsi_panel *panel, int fod_lhbm_white_state)
 {
 	int rc = 0;
@@ -1924,21 +2079,18 @@ int mi_dsi_panel_read_lhbm_white_param(struct dsi_panel *panel)
 		retval = -EAGAIN;
 		goto error;
 	}
-
 	rc = mi_dsi_panel_read_lhbm_white_reg(panel,FOD_LHBM_WHITE_1000NIT_GIRON);
 	if (rc < 0) {
 		pr_err("[%s]failed to read FOD_LHBM_WHITE_1000NIT_GIRON param, rc = %d\n", panel->name,rc);
 		retval = -EAGAIN;
 		goto error;
 	}
-
 	rc = mi_dsi_panel_read_lhbm_white_reg(panel,FOD_LHBM_WHITE_110NIT_GIROFF);
 	if (rc < 0) {
 		pr_err("[%s]failed to read FOD_LHBM_WHITE_110NIT_GIROFF param, rc = %d\n", panel->name,rc);
 		retval = -EAGAIN;
 		goto error;
 	}
-
 	rc = mi_dsi_panel_read_lhbm_white_reg(panel,FOD_LHBM_WHITE_110NIT_GIRON);
 	if (rc < 0) {
 		pr_err("[%s]failed to read FOD_LHBM_WHITE_110NIT_GIRON param, rc = %d\n", panel->name,rc);
@@ -2428,6 +2580,7 @@ error:
 	mutex_unlock(&panel->panel_lock);
 	return retval;
 }
+#endif
 
 int dsi_panel_read_dc_param(struct dsi_panel *panel)
 {
@@ -3015,6 +3168,7 @@ ssize_t dsi_panel_read_mipi_reg(struct dsi_panel *panel, char *buf)
 	return count;
 }
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 #if DSI_READ_WRITE_PANEL_DEBUG
 static ssize_t mipi_reg_procfs_write(struct file *filp,
 				const char __user *buf,
@@ -3111,7 +3265,8 @@ int dsi_panel_procfs_deinit(struct dsi_panel *panel)
 	}
 	return 0;
 }
-#endif
+#endif /* DSI_READ_WRITE_PANEL_DEBUG */
+#endif /* CONFIG_MACH_XIAOMI_PSYCHE */
 
 ssize_t dsi_panel_read_wp_info(struct dsi_panel *panel, char *buf)
 {
@@ -3192,13 +3347,17 @@ int dsi_panel_set_doze_brightness(struct dsi_panel *panel,
 		goto exit;
 	}
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	if (mi_cfg->fod_hbm_enabled || mi_cfg->local_hbm_cur_status) {
+#else
+	if (mi_cfg->fod_hbm_enabled) {
+#endif
 		mi_cfg->unset_doze_brightness = doze_brightness;
 		if (mi_cfg->unset_doze_brightness == DOZE_TO_NORMAL) {
 			mi_cfg->doze_brightness_state = DOZE_TO_NORMAL;
 			mi_cfg->dimming_state = STATE_DIM_BLOCK;
 		}
-		pr_info("fod_hbm_enabled/local_hbm_cur_status set, save unset_doze_brightness = %s\n",
+		pr_info("fod_hbm_enabled set, save unset_doze_brightness = %s\n",
 				doze_brightness_str[mi_cfg->unset_doze_brightness]);
 		goto exit;
 	}
@@ -3214,6 +3373,7 @@ int dsi_panel_set_doze_brightness(struct dsi_panel *panel,
 				pr_info("aod layer is not ready, skip to set doze brightness\n");
 				rc = -EAGAIN;
 			} else {
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 				if (panel->mi_cfg.panel_id == 0x4C334100420200) {
 					if (doze_brightness == DOZE_BRIGHTNESS_HBM) {
 						cmd_type = DSI_CMD_SET_MI_DOZE_HBM;
@@ -3232,6 +3392,16 @@ int dsi_panel_set_doze_brightness(struct dsi_panel *panel,
 						cmd_type = DSI_CMD_SET_MI_DOZE_LBM;
 						mi_cfg->aod_backlight = 10;
 					}
+#else
+				if (doze_brightness == DOZE_BRIGHTNESS_HBM ||
+					mi_cfg->unset_doze_brightness == DOZE_BRIGHTNESS_HBM) {
+					cmd_type = DSI_CMD_SET_MI_DOZE_HBM;
+					mi_cfg->aod_backlight = 170;
+				} else if (doze_brightness == DOZE_BRIGHTNESS_LBM ||
+					mi_cfg->unset_doze_brightness == DOZE_BRIGHTNESS_LBM) {
+					cmd_type = DSI_CMD_SET_MI_DOZE_LBM;
+					mi_cfg->aod_backlight = 10;
+#endif
 				}
 			}
 			if (cmd_type != DSI_CMD_SET_MAX) {
@@ -3292,6 +3462,149 @@ ssize_t dsi_panel_get_doze_brightness(struct dsi_panel *panel, char *buf)
 	return count;
 }
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+int dsi_panel_lockdowninfo_param_read(struct dsi_panel *panel)
+{
+	int rc = 0;
+	int i = 0;
+	struct dsi_panel_mi_cfg *mi_cfg;
+	struct dsi_panel_cmd_set *cmd_sets;
+	struct dsi_read_config ld_read_config;
+	struct dsi_panel_cmd_set read_cmd_set = {0};
+
+	if (!panel || !panel->cur_mode || !panel->cur_mode->priv_info) {
+		pr_err("invalid params\n");
+		return -EINVAL;
+	}
+
+	if (!panel->panel_initialized) {
+		pr_err("panel not initialized\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&panel->panel_lock);
+
+	mi_cfg = &panel->mi_cfg;
+	cmd_sets = &panel->cur_mode->priv_info->cmd_sets[DSI_CMD_SET_MI_READ_LOCKDOWN_INFO];
+	if (cmd_sets->cmds) {
+		read_cmd_set.cmds = cmd_sets->cmds;
+		read_cmd_set.count = 1;
+		read_cmd_set.state = cmd_sets->state;
+		rc = dsi_panel_write_cmd_set(panel, &read_cmd_set);
+		if (rc) {
+			pr_err("[%s] failed to send cmds, rc=%d\n", panel->name, rc);
+			rc = -EIO;
+			goto done;
+		}
+
+		pr_info("[%s]", panel->name);
+		if (strcmp(panel->name,"xiaomi 42 02 0a video mode dual dsi cphy panel") &&
+			strcmp(panel->name,"xiaomi 35 02 0b video mode dual dsi cphy panel")) {
+
+			ld_read_config.is_read = 1;
+			ld_read_config.cmds_rlen = 8;
+			ld_read_config.read_cmd = read_cmd_set;
+			ld_read_config.read_cmd.cmds = &read_cmd_set.cmds[1];
+			rc = dsi_panel_read_cmd_set(panel, &ld_read_config);
+			if (rc <= 0) {
+				pr_err("[%s] failed to read cmds, rc=%d\n", panel->name, rc);
+				rc = -EIO;
+				goto done;
+			}
+
+			for(i = 0; i < 8; i++) {
+				pr_info("0x%x", ld_read_config.rbuf[i]);
+				mi_cfg->lockdowninfo_read.lockdowninfo[i] = ld_read_config.rbuf[i];
+			}
+
+			if (!strcmp(panel->name,"xiaomi 37 02 0b video mode dsc dsi panel")) {
+				mi_cfg->lockdowninfo_read.lockdowninfo[7] = 0x01;
+				pr_info("plockdowninfo[7] = 0x%d \n",
+					mi_cfg->lockdowninfo_read.lockdowninfo[7]);
+			}
+			mi_cfg->lockdowninfo_read.lockdowninfo_read_done = 1;
+		} else {
+			for(i = 0; i < 8; i++) {
+				ld_read_config.is_read = 1;
+				ld_read_config.cmds_rlen = 1;
+				ld_read_config.read_cmd = read_cmd_set;
+				ld_read_config.read_cmd.cmds = &read_cmd_set.cmds[i+1];
+				rc = dsi_panel_read_cmd_set(panel, &ld_read_config);
+				if (rc <= 0) {
+					pr_err("[%s] failed to read, rc=%d\n", panel->name, rc);
+					rc = -EIO;
+					goto done;
+				}
+
+				pr_info("0x%x", ld_read_config.rbuf[0]);
+				mi_cfg->lockdowninfo_read.lockdowninfo[i] = ld_read_config.rbuf[0];
+			}
+			mi_cfg->lockdowninfo_read.lockdowninfo_read_done = 1;
+
+			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DISP_LCD_HBM_L3_ON);
+
+		}
+	}
+
+done:
+	mutex_unlock(&panel->panel_lock);
+	return rc;
+
+}
+
+ssize_t dsi_panel_lockdown_info_read(unsigned char *plockdowninfo)
+{
+	int rc = 0;
+	int i = 0;
+	static int count = 0;
+
+	if (!g_panel || !plockdowninfo) {
+		pr_err("invalid params\n");
+		return -EINVAL;
+	}
+
+	while(!g_panel->mi_cfg.lockdowninfo_read.lockdowninfo_read_done  && count < 500) {
+		pr_debug("[%s][%s] waitting for panel priv_info initialized!\n", __func__, g_panel->name);
+		msleep_interruptible(1000);
+		count++;
+	}
+
+	for(i = 0; i < 8; i++) {
+		pr_info("0x%x",  g_panel->mi_cfg.lockdowninfo_read.lockdowninfo[i]);
+		plockdowninfo[i] = g_panel->mi_cfg.lockdowninfo_read.lockdowninfo[i];
+	}
+
+	rc = plockdowninfo[0];
+
+	return rc;
+}
+EXPORT_SYMBOL(dsi_panel_lockdown_info_read);
+
+ssize_t dsi_panel_vendor_info_read(unsigned char *plockdowninfo)
+{
+	int rc = 0;
+
+	if (!g_panel || !plockdowninfo) {
+		pr_err("invalid params\n");
+		return -EINVAL;
+	}
+	pr_info("[%s]", g_panel->name);
+
+	if (!strcmp(g_panel->name,"xiaomi 42 02 0a video mode dual dsi cphy panel")) {
+		plockdowninfo[0] = 0x53;
+		plockdowninfo[1] = 0x42;
+	} else if (!strcmp(g_panel->name,"xiaomi 35 02 0b video mode dual dsi cphy panel")){
+		plockdowninfo[0] = 0x44;
+		plockdowninfo[1] = 0x35;
+	} else {
+		plockdowninfo[0] = 0xFF;
+		plockdowninfo[1] = 0xFF;
+	}
+
+	return rc;
+}
+EXPORT_SYMBOL(dsi_panel_vendor_info_read);
+#else
 ssize_t dsi_panel_lockdown_info_read(unsigned char *plockdowninfo)
 {
 	int rc = 0;
@@ -3348,31 +3661,7 @@ done:
 	return rc;
 }
 EXPORT_SYMBOL(dsi_panel_lockdown_info_read);
-
-ssize_t dsi_panel_vendor_info_read(unsigned char *plockdowninfo)
-{
-	int rc = 0;
-
-	if (!g_panel || !plockdowninfo) {
-		pr_err("invalid params\n");
-		return -EINVAL;
-	}
-	pr_info("[%s]", g_panel->name);
-
-	if (!strcmp(g_panel->name,"xiaomi 42 02 0a video mode dual dsi cphy panel")) {
-		plockdowninfo[0] = 0x53;
-		plockdowninfo[1] = 0x42;
-	} else if (!strcmp(g_panel->name,"xiaomi 35 02 0b video mode dual dsi cphy panel")){
-		plockdowninfo[0] = 0x44;
-		plockdowninfo[1] = 0x35;
-	} else {
-		plockdowninfo[0] = 0xFF;
-		plockdowninfo[1] = 0xFF;
-	}
-
-	return rc;
-}
-EXPORT_SYMBOL(dsi_panel_vendor_info_read);
+#endif
 
 void dsi_panel_doubleclick_enable(bool on)
 {
@@ -3380,6 +3669,7 @@ void dsi_panel_doubleclick_enable(bool on)
 }
 EXPORT_SYMBOL(dsi_panel_doubleclick_enable);
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 int dsi_panel_power_turn_off(bool on)
 {
 	int rc = 0;
@@ -3417,6 +3707,7 @@ int dsi_panel_power_turn_off(bool on)
 
 	return rc;
 }
+#endif
 
 int dsi_panel_set_thermal_hbm_disabled(struct dsi_panel *panel,
 			bool thermal_hbm_disabled)
@@ -3558,6 +3849,7 @@ ssize_t calc_hw_vsync_info(struct dsi_panel *panel, char *buf)
 			panel->type);
 }
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 int mi_dsi_panel_set_fod_brightness(struct mipi_dsi_device *dsi, u16 brightness)
 {
 	u8 payload[2] = {(fpr_alpha_set[brightness] >> 8) & 0x0f, fpr_alpha_set[brightness] & 0xff};
@@ -3632,6 +3924,7 @@ static int mi_dsi_update_lhbm_cmd_87reg(struct dsi_panel *panel,
 
 	return rc;
 }
+#endif
 
 int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 {
@@ -3646,10 +3939,12 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 	u32 count;
 	u8 *tx_buf;
 	bool is_thermal_call = false;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	u32 fod_lhbm_level = 0;
 	bool fod_lhbm_low_brightness_enabled = false;
 	bool fod_lhbm_low_brightness_allow = true;
 	u32 fp_status = 0;
+#endif
 
 	if (!panel) {
 		pr_err("invalid params\n");
@@ -3672,13 +3967,18 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 		&& param != DISPPARAM_FOD_UNLOCK_SUCCESS
 		&& param != DISPPARAM_FOD_UNLOCK_FAIL
 		&& param != DISPPARAM_SET_THERMAL_HBM_DISABLE
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 		&& param != DISPPARAM_CLEAR_THERMAL_HBM_DISABLE
 		&& (param & 0x0000F000) != DISPPARAM_LOW_BRIGHTNESS_FOD
 		&& (param & 0x0000F000) != DISPPARAM_FP_STATUS) {
+#else
+		&& param != DISPPARAM_CLEAR_THERMAL_HBM_DISABLE) {
+#endif
 		pr_err("Panel not initialized!\n");
 		goto exit;
 	}
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	if ((panel->host_config.phy_type == DSI_PHY_TYPE_CPHY)
 		&& (param & 0x700) && param != 0xF00) {
 			pr_info("save cabc status!\n");
@@ -3692,6 +3992,7 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 			if(!param)
 				goto exit;
 	}
+#endif
 
 	/* cur_mode ptr assignment in dsi_display_set_mode func after open drm node */
 	if (panel->cur_mode)
@@ -3699,6 +4000,7 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 	else
 		priv_info = NULL;
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	if ((param & 0x000F0000) == DISPPARAM_HBM_ON) {
 		is_thermal_call = (param & 0x1);
 		param = (param & 0xFFFFFFFE);
@@ -3711,18 +4013,19 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 		fod_lhbm_low_brightness_allow = (param & 0x8);
 		param = (param & 0xFFFFFFF0);
 	}
-
+#endif
 	if ((param & 0x00F00000) == 0xD00000) {
 		fod_backlight = (param & 0x01FFF);
 		param = (param & 0x0FF00000);
 	}
-
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	if (mi_cfg->local_hbm_enabled) {
 		if ((param & 0x000F0000) == 0x20000) {
 			fod_lhbm_level = (param & 0xF);
 			param = (param & 0xFFFFFFF0);
 		}
 	}
+#endif
 
 	/* set smart fps status */
 	if (param & 0xF0000000) {
@@ -3821,6 +4124,7 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 		pr_info("acl off\n");
 		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_ACL_OFF);
 		break;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	case DISPPARAM_LOW_BRIGHTNESS_FOD:
 		pr_info("DISPPARAM_LOW_BRIGHTNESS_FOD=%d\n", fod_lhbm_low_brightness_enabled);
 		mi_cfg->fod_lhbm_low_brightness_enabled = fod_lhbm_low_brightness_enabled;
@@ -3844,6 +4148,7 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 		pr_info("DISPPARAM_ROUND_OFF\n");
 		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_ROUND_OFF);
 		break;
+#endif
 	default:
 		break;
 	}
@@ -3867,6 +4172,7 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DISP_LCD_HBM_OFF);
 		break;
 	case DISPPARAM_HBM_ON:
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 		pr_info("hbm on, thermal_hbm_disabled = %d\n", mi_cfg->thermal_hbm_disabled);
 		if (!mi_cfg->fod_hbm_enabled && !mi_cfg->thermal_hbm_disabled) {
 			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_HBM_ON);
@@ -3877,6 +4183,19 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 			}
 			mi_cfg->dimming_state = STATE_DIM_BLOCK;
 		}
+#else
+		if (param & DISPPARAM_THERMAL_SET)
+			is_thermal_call = true;
+		pr_info("hbm on, thermal_hbm_disabled = %d\n", mi_cfg->thermal_hbm_disabled);
+		if (!mi_cfg->fod_hbm_enabled && !mi_cfg->thermal_hbm_disabled)
+			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_HBM_ON);
+		if (is_thermal_call) {
+			pr_info("thermal clear hbm limit, restore previous hbm on\n");
+		} else {
+			mi_cfg->hbm_enabled = true;
+		}
+		mi_cfg->dimming_state = STATE_DIM_BLOCK;
+#endif
 		break;
 	case DISPPARAM_HBM_OFF:
 		if (param & DISPPARAM_THERMAL_SET)
@@ -3912,11 +4231,19 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 			}
 			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_HBM_OFF);
 			mi_cfg->dimming_state = STATE_DIM_RESTORE;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 			if (is_thermal_call) {
 				pr_info("thermal set hbm limit, hbm off\n");
 			} else {
 				mi_cfg->hbm_enabled = false;
 			}
+#else
+		}
+		if (is_thermal_call) {
+			pr_info("thermal set hbm limit, hbm off\n");
+		} else {
+			mi_cfg->hbm_enabled = false;
+#endif
 		}
 		break;
 	case DISPPARAM_HBM_HDR_ON:
@@ -3962,6 +4289,7 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 		mi_cfg->hbm_enabled = false;
 		break;
 	case DISPPARAM_HBM_FOD_ON:
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 		if (mi_cfg->local_hbm_enabled) {
 			cancel_delayed_work(&mi_cfg->enter_aod_delayed_work);
 			if (fod_lhbm_level == 1) {
@@ -3982,7 +4310,7 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 							break;
 					}
 				}
-				if (mi_cfg->gir_enabled) {
+				if(mi_cfg->gir_enabled){
 					rc = mi_dsi_panel_update_lhbm_white_param(panel,FOD_LHBM_WHITE_1000NIT_GIRON, DSI_CMD_SET_MI_FOD_LHBM_WHITE_1000NIT);
 				} else {
 					rc = mi_dsi_panel_update_lhbm_white_param(panel,FOD_LHBM_WHITE_1000NIT_GIROFF, DSI_CMD_SET_MI_FOD_LHBM_WHITE_1000NIT);
@@ -4006,7 +4334,8 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 							break;
 					}
 				}
-				if (mi_cfg->gir_enabled) {
+
+				if(mi_cfg->gir_enabled){
 					rc = mi_dsi_panel_update_lhbm_white_param(panel,FOD_LHBM_WHITE_110NIT_GIRON, DSI_CMD_SET_MI_FOD_LHBM_WHITE_110NIT);
 				} else {
 					rc = mi_dsi_panel_update_lhbm_white_param(panel,FOD_LHBM_WHITE_110NIT_GIROFF, DSI_CMD_SET_MI_FOD_LHBM_WHITE_110NIT);
@@ -4070,12 +4399,65 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 			mi_cfg->fod_hbm_enabled = true;
 			mi_cfg->dimming_state = STATE_DIM_BLOCK;
 		}
+#else
+		pr_info("hbm fod on\n");
+		cancel_delayed_work(&mi_cfg->enter_aod_delayed_work);
+		if (mi_cfg->fod_on_b2_index && priv_info &&
+			((mi_cfg->panel_id >> 8) == 0x4A32004202 ||
+			(mi_cfg->panel_id >> 8) == 0x4A3153004202)) {
+			pr_info("Fod on b2 index is enabled\n");
+			cmds = priv_info->cmd_sets[DSI_CMD_SET_MI_HBM_FOD_ON].cmds;
+			count = priv_info->cmd_sets[DSI_CMD_SET_MI_HBM_FOD_ON].count;
+			if (cmds && count >= mi_cfg->fod_on_b2_index + 2) {
+				tx_buf = (u8 *)cmds[mi_cfg->fod_on_b2_index].msg.tx_buf;
+				/* 0xB2(0) reg: if DC on (0xC8); if DC off (0x58) */
+				if (tx_buf && tx_buf[0] == 0xB2) {
+					if (mi_cfg->dc_enable) {
+						tx_buf[1] = 0xC8;
+					} else {
+						tx_buf[1] = 0x58;
+					}
+					pr_info("DSI_CMD_SET_MI_HBM_FOD_ON 0x%02X(9) = 0x%02X\n", tx_buf[0], tx_buf[1]);
+				} else {
+					if (tx_buf)
+						pr_err("tx_buf[0] = 0x%02X, check 0xB2 index\n", tx_buf[0]);
+					else
+						pr_err("tx_buf is NULL pointer\n");
+				}
+				tx_buf = (u8 *)cmds[mi_cfg->fod_on_b2_index + 2].msg.tx_buf;
+				/* 0xB2(9) reg: if DC on use 1 Pulse(0x00); if DC off use 4 Pulse(0x20) */
+				if (tx_buf && tx_buf[0] == 0xB2) {
+					if (mi_cfg->dc_enable) {
+						tx_buf[1] = 0x00;
+					} else {
+						tx_buf[1] = 0x20;
+					}
+					pr_info("DSI_CMD_SET_MI_HBM_FOD_ON 0x%02X(9) = 0x%02X\n", tx_buf[0], tx_buf[1]);
+				} else {
+					if (tx_buf)
+						pr_err("tx_buf[0] = 0x%02X, check 0xB2 index\n", tx_buf[0]);
+					else
+						pr_err("tx_buf is NULL pointer\n");
+				}
+			} else {
+				pr_err("0xB2 index(%d) error\n", mi_cfg->fod_on_b2_index);
+			}
+		}
+
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_HBM_FOD_ON);
+
+		if (mi_cfg->dc_type == 1)
+			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_CRC_OFF);
+		mi_cfg->fod_hbm_enabled = true;
+		mi_cfg->dimming_state = STATE_DIM_BLOCK;
+#endif
 		break;
 	case DISPPARAM_HBM_FOD2NORM:
 		pr_info("hbm fod to normal mode\n");
 		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_HBM_FOD2NORM);
 		break;
 	case DISPPARAM_HBM_FOD_OFF:
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 		if (mi_cfg->local_hbm_enabled) {
 			pr_info("lhbm Off\n");
 			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_FOD_LHBM_OFF);
@@ -4175,6 +4557,91 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 				}
 			}
 		}
+#else
+		pr_info("hbm fod off\n");
+		if (!mi_cfg->hbm_enabled) {
+			if (mi_cfg->hbm_51_ctrl_flag && priv_info) {
+				/* restore last backlight value when fod off */
+				cmds = priv_info->cmd_sets[DSI_CMD_SET_MI_HBM_FOD_OFF].cmds;
+				count = priv_info->cmd_sets[DSI_CMD_SET_MI_HBM_FOD_OFF].count;
+				if (cmds && count >= mi_cfg->fod_off_51_index) {
+					tx_buf = (u8 *)cmds[mi_cfg->fod_off_51_index].msg.tx_buf;
+					if (tx_buf && tx_buf[0] == 0x51) {
+						tx_buf[1] = (mi_cfg->last_bl_level >> 8) & 0x07;
+						tx_buf[2] = mi_cfg->last_bl_level & 0xff;
+						pr_info("DSI_CMD_SET_MI_HBM_FOD_OFF 0x%02X = 0x%02X 0x%02X\n",
+							tx_buf[0], tx_buf[1], tx_buf[2]);
+					} else {
+						if (tx_buf)
+							pr_err("tx_buf[0] = 0x%02X, check 0x51 index\n", tx_buf[0]);
+						else
+							pr_err("tx_buf is NULL pointer\n");
+					}
+				} else {
+					pr_err("0x51 index(%d) error\n", mi_cfg->hbm_off_51_index);
+				}
+			}
+			if (mi_cfg->dc_type == 0 && mi_cfg->fod_off_b5_index && priv_info) {
+				cmds = priv_info->cmd_sets[DSI_CMD_SET_MI_HBM_FOD_OFF].cmds;
+				count = priv_info->cmd_sets[DSI_CMD_SET_MI_HBM_FOD_OFF].count;
+				if (cmds && count >= mi_cfg->fod_off_b5_index) {
+					tx_buf = (u8 *)cmds[mi_cfg->fod_off_b5_index].msg.tx_buf;
+					if (tx_buf && tx_buf[0] == 0xb5) {
+						if (panel->power_mode == SDE_MODE_DPMS_LP1 ||
+							panel->power_mode == SDE_MODE_DPMS_LP2) {
+							pr_info("Fod off to aod set elvss swire to -3.0V\n");
+							tx_buf[1] = 0x19;
+						} else if (panel->power_mode == SDE_MODE_DPMS_ON) {
+							pr_info("Fod off to normal set elvss swire to -4.5V\n");
+							tx_buf[1] = 0x0A;
+						}
+					}
+				}
+			}
+			if (mi_cfg->vi_setting_enabled) {
+				/* if last backlight >= vi_switch_threshold, set VI voltage -3.5V */
+				if (mi_cfg->last_bl_level >= mi_cfg->vi_switch_threshold) {
+					rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_VI_SETTING_HIGH);
+				} else {
+					rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_VI_SETTING_LOW);
+				}
+			}
+			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_HBM_FOD_OFF);
+			mi_cfg->dimming_state = STATE_DIM_RESTORE;
+		} else {
+			if (mi_cfg->thermal_hbm_disabled) {
+				pr_info("thermal set hbm limit, do not recovery hbm on\n");
+			} else {
+				pr_info("recovery hbm on mode\n");
+				rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_HBM_ON);
+				if (mi_cfg->hbm_brightness)
+					rc = dsi_panel_update_backlight(panel, mi_cfg->last_bl_level);
+			}
+		}
+		if (mi_cfg->dc_type == 0 && mi_cfg->dc_enable) {
+			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_AOD_TO_DC_ON);
+			if (rc)
+				pr_err("[%s] failed to send DSI_CMD_SET_MI_DC_ON cmd, rc=%d\n",
+					panel->name, rc);
+		}
+		mi_cfg->fod_hbm_enabled = false;
+		mi_cfg->fod_hbm_off_time = ktime_add_ms(ktime_get(),
+				mi_cfg->fod_off_dimming_delay);
+
+		if (panel->power_mode == SDE_MODE_DPMS_LP1 ||
+				panel->power_mode == SDE_MODE_DPMS_LP2) {
+			if (mi_cfg->layer_fod_unlock_success || mi_cfg->sysfs_fod_unlock_success) {
+				pr_info("[%d,%d]Fod fingerprint unlock success, skip into aod mode\n",
+					mi_cfg->layer_fod_unlock_success, mi_cfg->sysfs_fod_unlock_success);
+			} else {
+				pr_info("delayed_work schedule --- delay enter aod mode\n");
+				mi_cfg->into_aod_pending = true;
+				__pm_wakeup_event(mi_cfg->aod_wakelock, DEFAULT_FOD_OFF_ENTER_AOD_DELAY + 100);
+				schedule_delayed_work(&mi_cfg->enter_aod_delayed_work,
+					msecs_to_jiffies(DEFAULT_FOD_OFF_ENTER_AOD_DELAY));
+			}
+		}
+#endif
 		break;
 	case DISPPARAM_FOD_UNLOCK_SUCCESS:
 		pr_info("Fod fingerprint unlock success\n");
@@ -4211,10 +4678,12 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 			else
 				rc = dsi_panel_update_backlight(panel, mi_cfg->last_bl_level);
 		}
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 		if (panel->mi_cfg.panel_id == 0x4C334100420200) {
 			mi_dsi_update_lhbm_cmd_b2reg(panel, true);
 			mi_dsi_update_nolp_b2reg(panel, true);
 		}
+#endif
 		mi_cfg->dc_enable = true;
 		break;
 	case DISPPARAM_DC_OFF:
@@ -4227,10 +4696,12 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 			else
 				rc = dsi_panel_update_backlight(panel, mi_cfg->last_bl_level);
 		}
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 		if (panel->mi_cfg.panel_id == 0x4C334100420200) {
 			mi_dsi_update_lhbm_cmd_b2reg(panel, false);
 			mi_dsi_update_nolp_b2reg(panel, false);
 		}
+#endif
 		mi_cfg->dc_enable = false;
 		break;
 	default:
@@ -4347,6 +4818,16 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 		pr_info("dither off\n");
 		mi_cfg->dither_enabled = false;
 		break;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	case DISPPARAM_DFPS_IDLE_ON:
+		pr_info("idle on\n");
+		panel->mi_cfg.idle_mode_flag = true;
+		break;
+	case DISPPARAM_DFPS_IDLE_OFF:
+		pr_info("idle off\n");
+		panel->mi_cfg.idle_mode_flag = false;
+		break;
+#endif
 	case DISPPARAM_SET_THERMAL_HBM_DISABLE:
 		pr_info("set thermal hbm disable\n");
 		mi_cfg->thermal_hbm_disabled = true;
@@ -4389,6 +4870,7 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 		DSI_INFO("DFPS:144fps\n");
 		panel->mi_cfg.smart_fps_restore = true;
 		break;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	case DISPPARAM_GIR_ON:
 		pr_info("request gir on\n");
 		mi_cfg->request_gir_status = true;
@@ -4397,6 +4879,7 @@ int dsi_panel_set_disp_param(struct dsi_panel *panel, u32 param)
 		pr_info("request gir off\n");
 		mi_cfg->request_gir_status = false;
 		break;
+#endif
 	default:
 		break;
 	}

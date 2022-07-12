@@ -113,6 +113,9 @@ struct dsi_phy_cfg {
 	enum dsi_phy_type phy_type;
 	unsigned long bit_clk_rate_hz;
 	unsigned long clk_strength;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	bool cphy_strength;
+#endif
 };
 
 struct dsi_phy_hw;

@@ -30,11 +30,17 @@
 #include "dsi_parser.h"
 #include "msm_drv.h"
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 #define DSI_READ_WRITE_PANEL_DEBUG 1
+#endif
+
 #define DEFAULT_FOD_OFF_DIMMING_DELAY     170
 #define DEFAULT_FOD_OFF_ENTER_AOD_DELAY   300
 #define DISPPARAM_THERMAL_SET             0x1
+
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 #define DEFAULT_CABC_WRITE_DELAY          3000
+#endif
 
 #define MAX_VSYNC_COUNT                   200
 
@@ -90,6 +96,7 @@ struct dc_cfg {
 	u8 exit_dc_lut[75];
 };
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 struct dc_cfg_v2 {
 	bool read_done;
 	bool update_done;
@@ -115,6 +122,12 @@ enum fingerprint_status {
 	HEART_RATE_STOP = 6,
 };
 
+struct lockdowninfo_cfg {
+	u8 lockdowninfo[16];
+	bool lockdowninfo_read_done;
+};
+#endif
+
 struct greenish_gamma_cfg {
 	u32 index_1st_param;
 	u32 index_2nd_param;
@@ -134,6 +147,7 @@ typedef struct brightness_alpha {
 	uint32_t alpha;
 } brightness_alpha;
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 struct gir_cfg {
 	bool update_done;
 	int update_index;
@@ -162,6 +176,7 @@ enum fod_lhbm_white_state {
 	FOD_LHBM_WHITE_110NIT_GIRON,
 	FOD_LHBM_WHITE_MAX
 };
+#endif
 
 struct dsi_panel_mi_cfg {
 	struct dsi_panel *dsi_panel;
@@ -195,8 +210,10 @@ struct dsi_panel_mi_cfg {
 	/* dc read */
 	bool dc_update_flag;
 	struct dc_cfg dc_cfg;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	bool dc_update_flag_v2;
 	struct dc_cfg_v2 dc_cfg_v2[DC_LUT_MAX];
+#endif
 
 	/* white point coordinate info */
 	bool wp_read_enabled;
@@ -215,6 +232,13 @@ struct dsi_panel_mi_cfg {
 
 	bool dynamic_elvss_enabled;
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	int esd_err_irq_gpio;
+	int esd_err_irq;
+	int esd_err_irq_flags;
+	bool esd_err_enabled;
+#endif
+
 	/* elvss dimming info */
 	bool elvss_dimming_check_enable;
 	u32 elvss_dimming_read_len;
@@ -227,7 +251,9 @@ struct dsi_panel_mi_cfg {
 
 	struct delayed_work enter_aod_delayed_work;
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	struct delayed_work cabc_delayed_work;
+#endif
 
 	bool hbm_enabled;
 	bool thermal_hbm_disabled;
@@ -275,10 +301,17 @@ struct dsi_panel_mi_cfg {
 	bool smart_fps_restore;
 	u32 smart_fps_max_framerate;
 	u32 smart_fps_value;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	u32 idle_fps;
+	struct lockdowninfo_cfg lockdowninfo_read;
+	bool idle_mode_flag;
+#endif
 
 	bool dither_enabled;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	u32 cabc_current_status;
 	u32 cabc_temp_status;
+	int current_tp_code_fps;
 
 	bool local_hbm_enabled;
 	bool fod_lhbm_87reg_ctrl_flag;
@@ -310,6 +343,7 @@ struct dsi_panel_mi_cfg {
 
 	bool nolp_b2reg_ctrl_flag;
 	u32 nolp_b2reg_index;
+#endif
 };
 
 struct dsi_read_config {
@@ -333,10 +367,19 @@ struct calc_hw_vsync {
 	u64 measured_fps_x1000;
 };
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+int dsi_panel_parse_esd_gpio_config(struct dsi_panel *panel);
+#endif
+
 int dsi_panel_parse_mi_config(struct dsi_panel *panel,
 				struct device_node *of_node);
 
 void display_utc_time_marker(const char *format, ...);
+
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+int dsi_panel_esd_irq_ctrl(struct dsi_panel *panel,
+				bool enable);
+#endif
 
 int dsi_panel_write_cmd_set(struct dsi_panel *panel,
 				struct dsi_panel_cmd_set *cmd_sets);
@@ -364,6 +407,7 @@ int dsi_panel_read_dc_param(struct dsi_panel *panel);
 
 int dsi_panel_update_dc_param(struct dsi_panel *panel);
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 int mi_dsi_panel_read_and_update_dc_param_v2(struct dsi_panel *panel);
 
 int mi_dsi_panel_read_and_update_gir_param(struct dsi_panel *panel);
@@ -372,6 +416,7 @@ int mi_dsi_panel_read_and_update_lhbm_green_500nit_param(struct dsi_panel *panel
 int mi_dsi_panel_read_lhbm_white_param(struct dsi_panel *panel);
 int mi_dsi_panel_read_lhbm_white_reg(struct dsi_panel *panel, int fod_lhbm_white_state);
 int mi_dsi_panel_update_lhbm_white_param(struct dsi_panel *panel, int fod_lhbm_white_state, int cmd_index);
+#endif
 
 int dsi_panel_switch_disp_rate_gpio(struct dsi_panel *panel);
 
@@ -388,25 +433,36 @@ int dsi_panel_read_greenish_gamma_setting(struct dsi_panel *panel);
 
 int dsi_panel_update_greenish_gamma_setting(struct dsi_panel *panel);
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+int dsi_panel_match_fps_pen_setting(struct dsi_panel *panel,
+				struct dsi_display_mode *adj_mode);
+#endif
+
 int dsi_panel_set_thermal_hbm_disabled(struct dsi_panel *panel,
 				bool thermal_hbm_disabled);
 int dsi_panel_get_thermal_hbm_disabled(struct dsi_panel *panel,
 				bool *thermal_hbm_disabled);
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+int dsi_panel_lockdowninfo_param_read(struct dsi_panel *panel);
+
 int dsi_panel_power_turn_off(bool on);
 
 int mi_dsi_panel_set_fod_brightness(struct mipi_dsi_device *dsi, u16 brightness);
+#endif
 
 struct calc_hw_vsync *get_hw_calc_vsync_struct(int dsi_display_type);
 ssize_t calc_hw_vsync_info(struct dsi_panel *panel,
 				char *buf);
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 #if DSI_READ_WRITE_PANEL_DEBUG
 int dsi_panel_procfs_init(struct dsi_panel *panel);
 int dsi_panel_procfs_deinit(struct dsi_panel *panel);
 #else
 static inline int dsi_panel_procfs_init(struct dsi_panel *panel) { return 0; }
 static inline int dsi_panel_procfs_deinit(struct dsi_panel *panel) { return 0; }
-#endif
+#endif /* DSI_READ_WRITE_PANEL_DEBUG */
+#endif /* CONFIG_MACH_XIAOMI_PSYCHE */
 
 #endif /* _DSI_PANEL_MI_H_ */

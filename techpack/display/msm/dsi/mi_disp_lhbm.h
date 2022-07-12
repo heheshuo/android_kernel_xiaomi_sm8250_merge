@@ -43,7 +43,6 @@ struct disp_display {
 struct disp_lhbm {
 	struct disp_display d_display[MI_DISP_MAX];
 	struct disp_thread fod_thread;
-	//wait_queue_head_t fod_pending_wq;
 };
 
 struct fod_work_data {

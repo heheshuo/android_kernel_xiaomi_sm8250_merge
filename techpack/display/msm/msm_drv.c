@@ -48,7 +48,9 @@
 #include "msm_mmu.h"
 #include "sde_wb.h"
 #include "sde_dbg.h"
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 #include "dsi/dsi_panel_mi.h"
+#endif
 
 /*
  * MSM driver version:
@@ -2211,7 +2213,9 @@ static void msm_pdev_shutdown(struct platform_device *pdev)
 		return;
 	}
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	dsi_panel_power_turn_off(false);
+#endif
 
 	msm_lastclose(ddev);
 

@@ -22,6 +22,10 @@
 #include "sde_dbg.h"
 #include "dsi_parser.h"
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+#include "dsi_panel_mi.h"
+#endif
+
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 #define INT_BASE_10 10
 
@@ -36,7 +40,9 @@
 
 DEFINE_MUTEX(dsi_display_clk_mutex);
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 extern int mi_disp_lhbm_attach_primary_dsi_display(struct dsi_display *display);
+#endif
 
 static char dsi_display_primary[MAX_CMDLINE_PARAM_LEN];
 static char dsi_display_secondary[MAX_CMDLINE_PARAM_LEN];
@@ -788,7 +794,9 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 					bool te_check_override)
 {
 	struct dsi_display *dsi_display = display;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	struct drm_panel_esd_config *config;
+#endif
 	struct dsi_panel *panel;
 	u32 status_mode;
 	int rc = 0x1, ret;
@@ -840,11 +848,13 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 	dsi_display_mask_ctrl_error_interrupts(dsi_display, mask, true);
 
 	if (status_mode == ESD_MODE_REG_READ) {
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 		config = &(panel->esd_config);
 		if (config->offset_cmd.count != 0) {
 			rc = dsi_panel_write_cmd_set(panel, &config->offset_cmd);
 			DSI_DEBUG("%s: read reg offset command rc = %d\n",__func__, rc);
 		}
+#endif
 
 		rc = dsi_display_status_reg_read(dsi_display);
 	} else if (status_mode == ESD_MODE_SW_BTA) {
@@ -5418,11 +5428,13 @@ static int dsi_display_bind(struct device *dev,
 	/* register te irq handler */
 	dsi_display_register_te_irq(display);
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	dsi_panel_procfs_init(display->panel);
 
 	rc = mi_disp_lhbm_attach_primary_dsi_display(display);
 	if (rc)
 		DSI_ERR("lhbm attach primary_dsi_display fail\n");
+#endif
 
 	goto error;
 
@@ -5472,7 +5484,9 @@ static void dsi_display_unbind(struct device *dev,
 
 	mutex_lock(&display->display_lock);
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	dsi_panel_procfs_deinit(display->panel);
+#endif
 
 	rc = dsi_panel_drv_deinit(display->panel);
 	if (rc)
@@ -7832,6 +7846,7 @@ int dsi_display_enable(struct dsi_display *display)
 			}
 		}
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 		rc = mi_dsi_panel_read_and_update_dc_param_v2(display->panel);
 		if (rc) {
 			DSI_ERR("[%s] failed to read DC para, rc=%d\n",
@@ -7855,6 +7870,15 @@ int dsi_display_enable(struct dsi_display *display)
 			DSI_ERR("[%s] failed to read fod lhbm white para, rc=%d\n",
 				display->name, rc);
 		}
+
+		if (display->panel->mi_cfg.is_tddi_flag) {
+			rc = dsi_panel_lockdowninfo_param_read(display->panel);
+			if (!rc) {
+				DSI_ERR("[%s] failed to read lockdowninfo para, rc=%d\n",
+					display->name, rc);
+			}
+		}
+#endif
 
 		return 0;
 	}

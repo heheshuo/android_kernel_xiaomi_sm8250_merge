@@ -35,7 +35,6 @@
  * Override to use async transfer
  */
 #define MIPI_DSI_MSG_ASYNC_OVERRIDE BIT(4)
-#define MIPI_DSI_MSG_CMD_DMA_SCHED BIT(5)
 
 enum dsi_panel_rotation {
 	DSI_PANEL_ROTATE_NONE = 0,
@@ -158,7 +157,9 @@ struct drm_panel_esd_config {
 	bool esd_enabled;
 
 	enum esd_check_status_mode status_mode;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 	struct dsi_panel_cmd_set offset_cmd;
+#endif
 	struct dsi_panel_cmd_set status_cmd;
 	u32 *status_cmds_rlen;
 	u32 *status_valid_params;
