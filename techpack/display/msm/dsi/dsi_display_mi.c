@@ -377,6 +377,30 @@ ssize_t dsi_display_fod_get(struct drm_connector *connector, char *buf)
 	return snprintf(buf, PAGE_SIZE, "%d\n", display->panel->mi_cfg.fod_ui_ready);
 }
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+int dsi_display_esd_irq_ctrl(struct dsi_display *display,
+		bool enable)
+{
+	int rc = 0;
+
+	if (!display) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&display->display_lock);
+
+	rc = dsi_panel_esd_irq_ctrl(display->panel, enable);
+	if (rc)
+		pr_err("[%s] failed to set esd irq, rc=%d\n",
+				display->name, rc);
+
+	mutex_unlock(&display->display_lock);
+
+	return rc;
+}
+#endif
+
 ssize_t complete_commit_time_get(struct drm_connector *connector, char *buf)
 {
 	struct dsi_display *dsi_display = NULL;

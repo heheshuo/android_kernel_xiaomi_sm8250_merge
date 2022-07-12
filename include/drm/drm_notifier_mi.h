@@ -22,6 +22,10 @@
 #define MI_DRM_EVENT_BLANK              0x01
 /* A hardware display blank early change occurred */
 #define MI_DRM_EARLY_EVENT_BLANK        0x02
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+/* A hardware display blank more early change occured */
+#define MI_DRM_PRE_EVENT_BLANK          0x03
+#endif
 
 enum msm_drm_display_id {
 	/* primary display */

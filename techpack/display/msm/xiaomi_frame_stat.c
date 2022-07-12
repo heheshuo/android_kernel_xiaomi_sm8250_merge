@@ -38,7 +38,11 @@ void frame_stat_notify(int data)
 void calc_fps(u64 duration, int input_event)
 {
 	ktime_t current_time_us;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	u64 fps, diff_us, diff, curr_fps, idle_fps;
+#else
 	u64 fps, diff_us, diff, curr_fps;
+#endif
 
 	if (!g_panel->mi_cfg.smart_fps_support || !fm_stat.enabled)
 		return;
@@ -51,6 +55,21 @@ void calc_fps(u64 duration, int input_event)
 		goto exit;
 	}
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	idle_fps = g_panel->mi_cfg.idle_fps ? (u64)g_panel->mi_cfg.idle_fps : IDLE_FPS;
+	current_time_us = ktime_get();
+	if (fm_stat.idle_status) {
+		if (fm_stat.last_fps != (u64)idle_fps) {
+			if (g_panel->panel_mode == DSI_OP_CMD_MODE)
+				/* video panel will directly notify SDM */
+				frame_stat_notify((int)idle_fps);
+
+			fm_stat.last_fps = (u64)idle_fps;
+			pr_debug("%s: exit fps calc due to idle mode\n", __func__);
+		}
+		goto exit;
+	}
+#else
 	current_time_us = ktime_get();
 	if (fm_stat.idle_status) {
 		if (fm_stat.last_fps != IDLE_FPS) {
@@ -63,6 +82,7 @@ void calc_fps(u64 duration, int input_event)
 		}
 		goto exit;
 	}
+#endif
 
 	if(!fm_stat.start) {
 		fm_stat.last_sampled_time_us = current_time_us;
@@ -80,8 +100,13 @@ void calc_fps(u64 duration, int input_event)
 			pr_debug("%s: Long frame interval, frame interval[%lld ms], count[%d]\n", __func__, diff/NANO_TO_MICRO, fm_stat.skip_count);
 			if (fm_stat.skip_count > LONG_INTERVAL_FRAME_COUNT) {
 				/* Sometime  app refresh in low fps, here set 50hz */
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+				frame_stat_notify((u64)idle_fps);
+				fm_stat.last_fps = (u64)idle_fps;
+#else
 				frame_stat_notify(IDLE_FPS);
 				fm_stat.last_fps = IDLE_FPS;
+#endif
 			}
 			goto exit;
 		} else
