@@ -487,10 +487,7 @@
 	mi,mdss-dsi-panel-gir-update-flag;
 	mi,mdss-dsi-panel-gir-on-update-b9-index = <2>;
 
-/*aod status enter lp1 not on start*/
-	mi,mdss-dsi-panel-fod-dimlayer-enabled;
-	mi,mdss-dsi-dimlayer-brightness-alpha-lut-item-count = <21>;
-	mi,mdss-dsi-dimlayer-brightness-alpha-lut =
+	qcom,disp-fod-dim-lut =
 	/* brightness  alpha */
 		<0          0xFF
 		 4          0xEB
@@ -596,7 +593,7 @@
 				06 01 00 00 00 00 02 B8 00];
 			mi,mdss-dsi-fod-lhbm-white-read-B8-command-state = "dsi_lp_mode";
 
-			mi,mdss-dsi-fod-lhbm-white-1000nit-command = [
+			qcom,mdss-dsi-dispparam-hbm-fod-on-command = [
 				39 01 00 00 00 00 06 F0 55 AA 52 08 00 /* Set page 0 */
 				39 01 00 00 00 00 02 B2 18
 				05 01 00 00 00 00 02 38 00
@@ -635,13 +632,13 @@
 				39 01 00 00 00 00 03 87 0F FF
 				39 01 00 00 00 00 02 6F 02
 				39 01 00 00 32 00 02 87 05];
-			mi,mdss-dsi-fod-lhbm-off-command = [
+			qcom,mdss-dsi-dispparam-hbm-fod-off-command = [
 				39 01 00 00 00 00 02 6F 02
 				39 01 00 00 00 00 02 87 04];
-			mi,mdss-dsi-fod-lhbm-white-1000nit-command-state = "dsi_lp_mode";
+			qcom,mdss-dsi-dispparam-hbm-fod-on-command-state = "dsi_lp_mode";
 			mi,mdss-dsi-fod-lhbm-white-110nit-command-state = "dsi_lp_mode";
 			mi,mdss-dsi-fod-lhbm-green-500nit-command-state = "dsi_lp_mode";
-			mi,mdss-dsi-fod-lhbm-off-command-state = "dsi_lp_mode";
+			qcom,mdss-dsi-dispparam-hbm-fod-off-command-state = "dsi_lp_mode";
 
 			mi,mdss-dsi-hbm-hdr-on-command = [
 				/* VI Setting voltage -3.5V */
@@ -807,7 +804,7 @@
 			mi,mdss-dsi-hbm-on-command-state = "dsi_lp_mode";
 			mi,mdss-dsi-hbm-off-command-state = "dsi_lp_mode";
 
-			mi,mdss-dsi-fod-lhbm-white-1000nit-command = [
+			qcom,mdss-dsi-dispparam-hbm-fod-on-command = [
 				39 01 00 00 00 00 06 F0 55 AA 52 08 00 /* Set page 0 */
 				39 01 00 00 00 00 02 B2 18
 				05 01 00 00 00 00 02 38 00
@@ -846,13 +843,13 @@
 				39 01 00 00 00 00 03 87 0F FF
 				39 01 00 00 00 00 02 6F 02
 				39 01 00 00 22 00 02 87 05];
-			mi,mdss-dsi-fod-lhbm-off-command = [
+			qcom,mdss-dsi-dispparam-hbm-fod-off-command = [
 				39 01 00 00 00 00 02 6F 02
 				39 01 00 00 00 00 02 87 04];
-			mi,mdss-dsi-fod-lhbm-white-1000nit-command-state = "dsi_lp_mode";
+			qcom,mdss-dsi-dispparam-hbm-fod-on-command-state = "dsi_lp_mode";
 			mi,mdss-dsi-fod-lhbm-white-110nit-command-state = "dsi_lp_mode";
 			mi,mdss-dsi-fod-lhbm-green-500nit-command-state = "dsi_lp_mode";
-			mi,mdss-dsi-fod-lhbm-off-command-state = "dsi_lp_mode";
+			qcom,mdss-dsi-dispparam-hbm-fod-off-command-state = "dsi_lp_mode";
 
 			mi,mdss-dsi-hbm-hdr-on-command = [
 				/* VI Setting voltage -3.5V */
@@ -992,7 +989,7 @@
 			mi,mdss-dsi-hbm-on-command-state = "dsi_lp_mode";
 			mi,mdss-dsi-hbm-off-command-state = "dsi_lp_mode";
 
-			mi,mdss-dsi-fod-lhbm-white-1000nit-command = [
+			qcom,mdss-dsi-dispparam-hbm-fod-on-command = [
 				39 01 00 00 00 00 06 F0 55 AA 52 08 00 /* Set page 0 */
 				39 01 00 00 00 00 02 B2 18
 				05 01 00 00 00 00 02 38 00
@@ -1031,13 +1028,13 @@
 				39 01 00 00 00 00 03 87 0F FF
 				39 01 00 00 00 00 02 6F 02
 				39 01 00 00 19 00 02 87 05];
-			mi,mdss-dsi-fod-lhbm-off-command = [
+			qcom,mdss-dsi-dispparam-hbm-fod-off-command = [
 				39 01 00 00 00 00 02 6F 02
 				39 01 00 00 00 00 02 87 04];
-			mi,mdss-dsi-fod-lhbm-white-1000nit-command-state = "dsi_lp_mode";
+			qcom,mdss-dsi-dispparam-hbm-fod-on-command-state = "dsi_lp_mode";
 			mi,mdss-dsi-fod-lhbm-white-110nit-command-state = "dsi_lp_mode";
 			mi,mdss-dsi-fod-lhbm-green-500nit-command-state = "dsi_lp_mode";
-			mi,mdss-dsi-fod-lhbm-off-command-state = "dsi_lp_mode";
+			qcom,mdss-dsi-dispparam-hbm-fod-off-command-state = "dsi_lp_mode";
 
 			mi,mdss-dsi-hbm-hdr-on-command = [
 				/* VI Setting voltage -3.5V */
